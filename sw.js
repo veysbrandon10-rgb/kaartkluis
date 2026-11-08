@@ -1,6 +1,6 @@
 /* Kaartkluis — offline: app zelf, kaartdata en afbeeldingen worden op het toestel bewaard */
-const VERSION = 'kk-v1';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'scanner.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const VERSION = 'kk-v2';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'scanner.js', 'sync.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION + '-shell').then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -16,19 +16,21 @@
   --font-body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
   --radius: 12px;
   --tabbar-h: 64px;
+  --bar: #1d2340;
+  --bar-ink: #eef0f6;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #12152a; --sheet: #1c2039; --ink: #eceefa; --muted: #a2a7c6; --line: #2e3356;
-    --accent: #8d84ff; --accent-ink: #12152a; --owned: #45d39a; --warn: #f0995e;
+    --accent: #8d84ff; --accent-ink: #12152a; --owned: #45d39a; --warn: #f0995e; --bar: #0b0d1c;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --paper: #12152a; --sheet: #1c2039; --ink: #eceefa; --muted: #a2a7c6; --line: #2e3356;
-  --accent: #8d84ff; --accent-ink: #12152a; --owned: #45d39a; --warn: #f0995e;
+  --accent: #8d84ff; --accent-ink: #12152a; --owned: #45d39a; --warn: #f0995e; --bar: #0b0d1c;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
   color-scheme: dark;
 }
@@ -52,7 +54,7 @@ button, input, select { font: inherit; color: inherit; }
 /* Top bar */
 .topbar {
   position: sticky; top: 0; z-index: 20;
-  background: var(--ink); color: var(--paper);
+  background: var(--bar); color: var(--bar-ink);
   padding-top: env(safe-area-inset-top, 0px);
 }
 .topbar-inner {
@@ -65,8 +67,8 @@ button, input, select { font: inherit; color: inherit; }
   font: 800 19px/1 var(--font-display); letter-spacing: -.01em; }
 .brand img { border-radius: 7px; }
 .lang-pick select {
-  appearance: none; background: color-mix(in srgb, var(--paper) 14%, transparent);
-  color: var(--paper); border: 1px solid color-mix(in srgb, var(--paper) 30%, transparent);
+  appearance: none; background: color-mix(in srgb, var(--bar-ink) 14%, transparent);
+  color: var(--bar-ink); border: 1px solid color-mix(in srgb, var(--bar-ink) 30%, transparent);
   border-radius: 999px; padding: 6px 30px 6px 12px; font-weight: 600; font-size: 14px;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
