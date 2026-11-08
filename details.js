@@ -86,6 +86,7 @@
   // '' = de standaardversie (normaal, of holo als de kaart alleen als holo bestaat)
   KK.VARIANT_NAMES = { '': 'Normaal', r: 'Reverse holo', h: 'Holo', f: '1e editie', p: 'Promo-stempel' };
   KK.VARIANT_SHORT = { '': 'N', r: 'R', h: 'H', f: '1e', p: 'P' };
+  (KK.STAMPS || []).forEach(([code, name]) => { KK.VARIANT_NAMES[code] = name; KK.VARIANT_SHORT[code] = 'S'; });
   KK.variantsOf = (d) => {
     if (!d || !d.v) return [''];
     const v = d.v; const out = [''];
@@ -100,7 +101,7 @@
 
   // ---------- Prijzen (Cardmarket, euro) ----------
   KK.priceOf = (d, code) => {
-    if (!d || !d.p) return null;
+    if (!d || !d.p || String(code).startsWith('s-')) return null; // gestempeld: geen betrouwbare prijs
     const p = d.p;
     const holoish = code === 'r' || code === 'h' || (code === '' && d.v && !d.v.normal && d.v.holo);
     return holoish ? (p.th || p.ah || p.t || p.a) : (p.t || p.a || p.th);

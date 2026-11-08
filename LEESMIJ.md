@@ -74,6 +74,8 @@ Dan is synchroniseren op elk toestel meteen ingesteld; iedereen moet alleen nog 
 
 - **Sets:** kies bovenaan de taal van je kaarten. Per reeks zie je de sets met je voortgang. Promo's staan als aparte set in hun reeks (bv. *SVP Black Star Promos* onder Scarlet & Violet). Het zoekvak zoekt sets én kaarten op naam.
 - **Varianten:** tik op een kaart om per versie (normaal, reverse holo, holo, 1e editie, promo-stempel) bij te houden hoeveel je hebt. Op de kaartjes zie je kleine letters N/R/H: groen = heb je.
+- **Gestempelde promo's:** open een kaart en kies bij *Gestempelde versie toevoegen* het soort stempel: Prerelease, Staff, Pokémon Center, set-logo, Play! Pokémon, League, kampioenschap, Worlds, Professor Program (cosmos holo) of een andere. Bij het scannen kun je de stempel vooraf kiezen. Al je gestempelde kaarten staan bij Collectie → Gestempeld. De databank weet niet welke kaart met welke stempel bestaat, dus je voegt ze zelf toe. Voor gestempelde versies toont de app geen prijs, omdat die sterk afwijkt van de gewone kaart.
+- **Back-upherinnering:** bij Meer kies je hoe vaak de app je herinnert aan een back-up (week, 2 weken, maand of nooit). Is het tijd, dan verschijnt bovenaan een balk met één knop om de back-up te downloaden.
 - **Master set:** zet dit aan in een set om elke variant apart te laten tellen bij je voortgang en bij *Ontbrekend*.
 - **Binder:** kies *Binder* in een set, stel 4, 9, 12 of 16 vakjes per pagina in, en zie op welke pagina en in welk vakje elke kaart hoort. Met *Reverse in eigen vakje* krijgt de reverse holo een eigen plaats.
 - **Verlanglijst en ruil:** tik het hartje (zoek ik) of *Mag weg / ruil* aan in een kaart. Bij Collectie vind je je verlanglijst en al je dubbels, met een knop om de lijst te kopiëren.

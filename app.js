@@ -28,7 +28,13 @@
   // Codes: r reverse, h holo, f 1e editie, p promo-stempel; want = verlanglijst, trade = mag weg.
   // Waarde { q, t }: aantal (of 1/0 voor markeringen) en tijdstip; 0 blijft bewaard zodat wissen synchroniseert.
   const VAR_CODES = ['', 'r', 'h', 'f', 'p'];
-  KK.VAR_CODES = VAR_CODES;
+  // Gestempelde versies: niet in de databank per kaart, dus zelf toe te voegen.
+  KK.STAMPS = [['s-pre', 'Prerelease-stempel'], ['s-staff', 'Staff-stempel'], ['s-pc', 'Pokémon Center-stempel'], ['s-set', 'Set-logo-stempel'],
+    ['s-play', 'Play! Pokémon-stempel'], ['s-league', 'League-stempel'], ['s-champ', 'Kampioenschap-stempel'], ['s-worlds', 'Worlds-stempel'],
+    ['s-prof', 'Professor Program (cosmos holo)'], ['s-other', 'Andere stempel']];
+  const ALL_CODES = VAR_CODES.concat(KK.STAMPS.map((x) => x[0]));
+  KK.VAR_CODES = ALL_CODES;
+  KK.isVar = (code) => ALL_CODES.includes(code);
   const col = store.get('kk-collection', { items: {} });
   if (!col.items) col.items = {};
   KK.collection = col;
@@ -42,7 +48,7 @@
   KK.setIdOf = (cardId) => cardId.slice(0, cardId.lastIndexOf('-'));
 
   KK.qty = (lang, id, code) => { const it = col.items[KK.vkey(lang, id, code || '')]; return it ? it.q : 0; };
-  KK.totalQty = (lang, id) => VAR_CODES.reduce((s, c) => s + KK.qty(lang, id, c), 0);
+  KK.totalQty = (lang, id) => ALL_CODES.reduce((s, c) => s + KK.qty(lang, id, c), 0);
   KK.flag = (lang, id, f) => KK.qty(lang, id, f) > 0;
 
   let saveTimer = null;
@@ -80,7 +86,7 @@
     const idx = {};
     for (const k in col.items) {
       if (!col.items[k].q) continue;
-      const p = KK.parseKey(k); if (!VAR_CODES.includes(p.code)) continue;
+      const p = KK.parseKey(k); if (!KK.isVar(p.code)) continue;
       const s = KK.setIdOf(p.id);
       ((idx[p.lang] = idx[p.lang] || {})[s] = idx[p.lang][s] || new Set()).add(p.id);
     }
@@ -171,7 +177,8 @@
     let dots = '';
     if (d && !opts.noDots && code == null) {
       const vs = KK.variantsOf(d);
-      if (vs.length > 1) dots = `<div class="vdots">${vs.map((v) => `<span class="${KK.qty(lang, c.id, v) ? 'on' : ''}" title="${esc(KK.variantName(d, v))}">${KK.VARIANT_SHORT[v]}</span>`).join('')}</div>`;
+      const stamped = KK.STAMPS.some((x) => KK.qty(lang, c.id, x[0]) > 0);
+      if (vs.length > 1 || stamped) dots = `<div class="vdots">${vs.length > 1 ? vs.map((v) => `<span class="${KK.qty(lang, c.id, v) ? 'on' : ''}" title="${esc(KK.variantName(d, v))}">${KK.VARIANT_SHORT[v]}</span>`).join('') : ''}${stamped ? '<span class="on stamp" title="Gestempeld">S</span>' : ''}</div>`;
     }
     return `<button class="card${q ? '' : ' missing'}" data-id="${esc(c.id)}"${code != null ? ` data-code="${code}"` : ''} aria-label="${esc(c.name)} ${esc(c.localId)}, ${q ? q + ' in bezit' : 'ontbreekt'}">
       <div class="art">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<div class="noimg">${esc(c.name)}<br>${esc(c.localId)}</div>`}
@@ -460,13 +467,20 @@
       body.querySelector('#f-trade').addEventListener('click', () => { const on = !KK.flag(lang, card.id, 'trade'); KK.setFlag(lang, card.id, 'trade', on); flags(); KK.toast(on ? 'Gemarkeerd als "mag weg"' : 'Markering "mag weg" weg'); });
       flags();
 
+      const extraStamps = [];
       const paint = (d) => {
-        const vs = KK.variantsOf(d);
+        const vs = KK.variantsOf(d).concat(KK.STAMPS.map((x) => x[0]).filter((v) => KK.qty(lang, card.id, v) > 0 || extraStamps.includes(v)));
+        const freeStamps = KK.STAMPS.filter((x) => !vs.includes(x[0]));
         body.querySelector('#variants').innerHTML = vs.map((v) => {
           const p = KK.priceOf(d, v);
           return `<div class="vrow"><div><b>${esc(KK.variantName(d, v))}</b>${p ? `<span class="muted small"> · ≈ ${KK.euro(p)}</span>` : ''}</div>
             <div class="stepper"><button data-dec="${v}" aria-label="Eén minder ${esc(KK.variantName(d, v))}">−</button><output class="num" data-q="${v}">${KK.qty(lang, card.id, v)}</output><button data-inc="${v}" aria-label="Eén meer ${esc(KK.variantName(d, v))}">+</button></div></div>`;
-        }).join('') + (d ? '' : '<div class="muted small">Varianten konden niet geladen worden. Je telt nu de standaardversie.</div>');
+        }).join('') + (d ? '' : '<div class="muted small">Varianten konden niet geladen worden. Je telt nu de standaardversie.</div>')
+          + (freeStamps.length ? `<div class="add-stamp"><label class="small" for="stamp-pick">Gestempelde versie toevoegen</label>
+              <div class="manual"><select id="stamp-pick" class="input">${freeStamps.map((x) => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}</select>
+              <button class="btn" id="stamp-add" type="button">Toevoegen</button></div></div>` : '');
+        const sa = body.querySelector('#stamp-add');
+        if (sa) sa.addEventListener('click', () => { const v = body.querySelector('#stamp-pick').value; extraStamps.push(v); KK.setQty(lang, card.id, KK.qty(lang, card.id, v) + 1, v); paint(KK.details.get(lang, card.id)); });
         const extra = [];
         if (d && d.r) extra.push('Zeldzaamheid: ' + d.r);
         body.querySelector('#card-extra').innerHTML = extra.map(esc).join('<br>');
@@ -512,7 +526,7 @@
 
   KK.dupeList = () => {
     const out = [];
-    KK.collectionKeys((p) => KK.VAR_CODES.includes(p.code)).forEach((k) => {
+    KK.collectionKeys((p) => KK.isVar(p.code)).forEach((k) => {
       const p = KK.parseKey(k); const q = col.items[k].q;
       const trade = KK.flag(p.lang, p.id, 'trade');
       if (q > 1 || trade) out.push(Object.assign(p, { spare: trade ? q : q - 1, q, trade }));
@@ -525,7 +539,7 @@
     if (arg) colTab = arg;
     const idx = KK.ownedIndex();
     let copies = 0, unique = 0;
-    KK.collectionKeys((p) => KK.VAR_CODES.includes(p.code)).forEach((k) => { copies += col.items[k].q; });
+    KK.collectionKeys((p) => KK.isVar(p.code)).forEach((k) => { copies += col.items[k].q; });
     Object.values(idx).forEach((sets) => Object.values(sets).forEach((s) => { unique += s.size; }));
     const langs = Object.keys(idx);
     el.innerHTML = `
@@ -537,7 +551,7 @@
       </div>
       <div class="chips" role="tablist">
         <button class="chip" data-tab="sets">Per set</button><button class="chip" data-tab="want">Verlanglijst</button>
-        <button class="chip" data-tab="dupe">Dubbels &amp; ruil</button><button class="chip" data-tab="compare">Vergelijken</button>
+        <button class="chip" data-tab="dupe">Dubbels &amp; ruil</button><button class="chip" data-tab="stamp">Gestempeld</button><button class="chip" data-tab="compare">Vergelijken</button>
       </div>
       <div id="col-area"></div>`;
     el.querySelectorAll('[data-tab]').forEach((b) => { b.setAttribute('aria-pressed', b.dataset.tab === colTab); b.addEventListener('click', () => { location.hash = '#/collectie/' + b.dataset.tab; }); });
@@ -545,7 +559,7 @@
     let alive = true; const abort = new AbortController();
 
     // waarde berekenen (details van alles wat je hebt)
-    const ownedKeys = KK.collectionKeys((p) => KK.VAR_CODES.includes(p.code)).map(KK.parseKey);
+    const ownedKeys = KK.collectionKeys((p) => KK.isVar(p.code)).map(KK.parseKey);
     const byLang = {}; ownedKeys.forEach((p) => { (byLang[p.lang] = byLang[p.lang] || new Set()).add(p.id); });
     const paintValue = () => {
       let v = 0, known = 0, all = 0;
@@ -564,6 +578,7 @@
       if (colTab === 'sets') return renderSets();
       if (colTab === 'want') return renderWant();
       if (colTab === 'dupe') return renderDupe();
+      if (colTab === 'stamp') return renderStamp();
       if (colTab === 'compare') { if (KK.renderCompare) KK.renderCompare(area); else area.innerHTML = '<div class="empty">Vergelijken vraagt synchronisatie (zie Instellingen).</div>'; }
     }
 
@@ -612,13 +627,24 @@
       ensureAndRepaint(list, () => { const r = area.querySelector('#rows'); if (r) r.innerHTML = rows(); });
     }
 
+    function renderStamp() {
+      const keys = KK.collectionKeys((p) => p.code.startsWith('s-')).map(KK.parseKey);
+      if (!keys.length) { area.innerHTML = '<div class="empty">Nog geen gestempelde kaarten. Open een kaart en kies "Gestempelde versie toevoegen", of kies een stempel bij het scannen.</div>'; return; }
+      const rows = () => keys.map((p) => KK.listRow(p.lang, p.id, p.code, `<b>${KK.qty(p.lang, p.id, p.code)}×</b>`)).join('');
+      area.innerHTML = `<div class="muted small">${keys.length} gestempelde versies.</div>
+        <div class="btn-row"><button class="btn" id="copy">Kopieer lijst</button></div><div class="results" id="rows">${rows()}</div>`;
+      area.querySelector('#copy').addEventListener('click', () => KK.copyText('Mijn gestempelde kaarten:\n' + keys.map((p) => `${KK.qty(p.lang, p.id, p.code)}× ${KK.lineText(p.lang, p.id, p.code)}`).join('\n')));
+      KK.openFromRow(area.querySelector('#rows'));
+      ensureAndRepaint(keys, () => { const r = area.querySelector('#rows'); if (r) r.innerHTML = rows(); });
+    }
+
     function ensureAndRepaint(keys, repaint) {
       const byL = {}; keys.forEach((p) => { (byL[p.lang] = byL[p.lang] || new Set()).add(p.id); });
       KK.detailsReady.then(async () => { for (const l of Object.keys(byL)) { if (!alive) return; await KK.details.ensure(l, [...byL[l]], null, abort.signal); } if (alive) repaint(); });
     }
 
     renderTab();
-    const onChange = () => { if (colTab === 'want' || colTab === 'dupe') renderTab(); paintValue(); };
+    const onChange = () => { if (colTab === 'want' || colTab === 'dupe' || colTab === 'stamp') renderTab(); paintValue(); };
     document.addEventListener('kk-change', onChange);
     return () => { alive = false; abort.abort(); document.removeEventListener('kk-change', onChange); };
   };
@@ -645,6 +671,30 @@
     KK.download('kaartkluis-collectie-' + new Date().toISOString().slice(0, 10) + '.csv', csv, 'text/csv;charset=utf-8');
   };
 
+  // ---------- Back-up en herinnering ----------
+  KK.backupNow = () => {
+    KK.download('kaartkluis-backup-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ app: 'kaartkluis', version: 2, exported: new Date().toISOString(), items: col.items }), 'application/json');
+    store.set('kk-last-backup', Date.now()); store.set('kk-backup-snooze', 0);
+    const b = document.getElementById('backup-banner'); if (b) b.hidden = true;
+  };
+  const DAY = 24 * 3600 * 1000;
+  if (KK.settings.backupEvery == null) KK.settings.backupEvery = 30;
+  if (!store.get('kk-last-backup', 0)) store.set('kk-last-backup', Date.now()); // eerste keer: tellen vanaf nu
+  KK.checkBackupReminder = () => {
+    const banner = document.getElementById('backup-banner'); if (!banner) return;
+    const every = KK.settings.backupEvery;
+    const last = store.get('kk-last-backup', Date.now()); const snooze = store.get('kk-backup-snooze', 0);
+    const hasCards = Object.keys(col.items).some((k) => col.items[k].q > 0);
+    const due = every > 0 && hasCards && Date.now() - last > every * DAY && Date.now() > snooze;
+    banner.hidden = !due;
+    if (!due) return;
+    const days = Math.floor((Date.now() - last) / DAY);
+    banner.innerHTML = `<div class="banner-inner"><div><b>Tijd voor een back-up</b><span class="small">Je laatste back-up is ${days} dagen oud.</span></div>
+      <div class="btn-row"><button class="btn primary" id="bk-now">Back-up downloaden</button><button class="btn" id="bk-later">Later</button></div></div>`;
+    banner.querySelector('#bk-now').addEventListener('click', () => { KK.backupNow(); KK.toast('Back-up gedownload. Bewaar hem op een veilige plek.'); });
+    banner.querySelector('#bk-later').addEventListener('click', () => { store.set('kk-backup-snooze', Date.now() + 2 * DAY); banner.hidden = true; });
+  };
+
   // ---------- Weergave: instellingen ----------
   let installEvt = null;
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; const b = document.getElementById('install'); if (b) b.hidden = false; });
@@ -665,13 +715,20 @@
         <div class="btn-row"><button class="btn" id="export">Back-up downloaden</button>
           <label class="btn" for="import-file">Back-up terugzetten</label><input id="import-file" type="file" accept="application/json,.json" hidden>
           <button class="btn" id="csv">Excel-lijst (CSV)</button></div>
+        <label class="small" for="bk-every">Herinner me aan een back-up</label>
+        <select id="bk-every" class="input"><option value="0">Nooit</option><option value="7">Elke week</option><option value="14">Elke 2 weken</option><option value="30">Elke maand</option></select>
+        <div class="muted small" id="bk-last"></div>
         <div class="muted small" id="csv-status"></div></section>
       <section class="panel"><h2>Over</h2>
         <p class="muted small" style="margin:0">Kaartgegevens, afbeeldingen en Cardmarket-prijzen komen van TCGdex, Pokédex-gegevens van PokeAPI: twee gratis open databanken. Prijzen zijn richtprijzen. Deze app is niet verbonden aan Nintendo, Creatures, GAME FREAK of The Pokémon Company.</p></section>`;
     const th = el.querySelector('#theme'); th.value = KK.settings.theme;
     th.addEventListener('change', () => { KK.settings.theme = th.value; KK.saveSettings(); applyTheme(); });
     el.querySelector('#install').addEventListener('click', async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; el.querySelector('#install').hidden = true; });
-    el.querySelector('#export').addEventListener('click', () => KK.download('kaartkluis-backup-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ app: 'kaartkluis', version: 2, exported: new Date().toISOString(), items: col.items }), 'application/json'));
+    el.querySelector('#export').addEventListener('click', () => { KK.backupNow(); paintLast(); });
+    const every = el.querySelector('#bk-every'); every.value = String(KK.settings.backupEvery);
+    every.addEventListener('change', () => { KK.settings.backupEvery = +every.value; KK.saveSettings(); KK.checkBackupReminder(); });
+    const paintLast = () => { const t = store.get('kk-last-backup', 0); el.querySelector('#bk-last').textContent = t ? 'Laatste back-up of start: ' + new Date(t).toLocaleDateString('nl-BE') : ''; };
+    paintLast();
     el.querySelector('#import-file').addEventListener('change', async (e) => {
       const f = e.target.files[0]; if (!f) return;
       try { const json = JSON.parse(await f.text()); if (!json.items) throw new Error(); const n = KK.mergeItems(json.items); KK.toast(n ? `${n} kaarten bijgewerkt` : 'Niets nieuws in deze back-up'); }
@@ -689,5 +746,6 @@
 
   // ---------- Start ----------
   if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  window.addEventListener('DOMContentLoaded', route);
+  window.addEventListener('DOMContentLoaded', () => { route(); KK.checkBackupReminder(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) KK.checkBackupReminder(); });
 })();

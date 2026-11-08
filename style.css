@@ -313,3 +313,12 @@ textarea.input { min-height: 120px; font-family: ui-monospace, Menlo, monospace;
 .dex-name { font-size: 12px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dex .qty { position: absolute; top: 6px; right: 6px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 999px; background: var(--owned); color: #fff; font-weight: 700; font-size: 11px; display: grid; place-items: center; }
 .tabbar a span { white-space: nowrap; }
+
+/* ---- Stempels, back-upherinnering ---- */
+.card .vdots span.stamp { background: var(--foil); color: #1d2340; }
+.add-stamp { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }
+.vpick { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.banner { background: color-mix(in srgb, var(--accent) 14%, var(--sheet)); border-bottom: 1px solid var(--line); }
+.banner-inner { max-width: 980px; margin: 0 auto; padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.banner-inner > div:first-child { display: flex; flex-direction: column; }

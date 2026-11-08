@@ -155,10 +155,9 @@
           <button class="chip" id="auto" aria-pressed="false">Doorlopend scannen</button>
           <button class="chip" id="autoadd" aria-pressed="false">Meteen toevoegen</button>
         </div>
-        <div class="chips" style="justify-content:center" role="group" aria-label="Versie bij toevoegen" id="vchips">
-          <span class="small muted" style="align-self:center">Versie:</span>
-          <button class="chip" data-v="" aria-pressed="true">Standaard</button><button class="chip" data-v="r" aria-pressed="false">Reverse holo</button><button class="chip" data-v="h" aria-pressed="false">Holo</button>
-        </div>
+        <div class="vpick"><label class="small muted" for="vsel">Versie bij toevoegen</label>
+          <select id="vsel" class="input mini"><option value="">Standaard</option><option value="r">Reverse holo</option><option value="h">Holo</option>
+            <optgroup label="Gestempeld">${KK.STAMPS.map((x) => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}</optgroup></select></div>
         <div class="scan-status" id="status">Leg de kaart in het kader, nummer onderaan goed zichtbaar en scherp.</div>
         <div class="results" id="results"></div>
         <section class="panel">
@@ -180,10 +179,10 @@
     let stream = null, track = null, alive = true, busy = false, autoTimer = null, torchOn = false;
     let lastAdded = { id: null, at: 0 };
     const opts = { auto: false, autoAdd: false, v: '' };
-    el.querySelector('#vchips').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; opts.v = b.dataset.v; el.querySelectorAll('#vchips [data-v]').forEach((x) => x.setAttribute('aria-pressed', x === b)); });
+    el.querySelector('#vsel').addEventListener('change', (e) => { opts.v = e.target.value; });
     async function addCard(lang, id, name) {
       let code = opts.v;
-      if (code) { const d = await KK.details.load(lang, id); if (d && !KK.variantsOf(d).includes(code)) { KK.toast(`${name} bestaat niet als ${KK.VARIANT_NAMES[code].toLowerCase()}; standaard toegevoegd`); code = ''; } }
+      if (code === 'r' || code === 'h') { const d = await KK.details.load(lang, id); if (d && !KK.variantsOf(d).includes(code)) { KK.toast(`${name} bestaat niet als ${KK.VARIANT_NAMES[code].toLowerCase()}; standaard toegevoegd`); code = ''; } }
       KK.addOne(lang, id, code); lastAdded = { id, at: Date.now() };
       KK.toast(`Toegevoegd: ${name}${code ? ' (' + KK.VARIANT_NAMES[code].toLowerCase() + ')' : ''} · ${KK.totalQty(lang, id)} in bezit`);
       if (results._cands) renderResults(results._cands, results._sure);
