@@ -96,7 +96,7 @@ h2 { font-size: 18px; font-weight: 600; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   background: var(--sheet); border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);
@@ -260,3 +260,56 @@ textarea.input { min-height: 120px; font-family: ui-monospace, Menlo, monospace;
 .sync-dot.err { background: var(--warn); }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---- Varianten, markeringen ---- */
+.card .want { position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 50%; background: #e0457b; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.card .want svg, .chip.flag svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.card .want svg { stroke: #fff; fill: #fff; }
+.card .vdots { position: absolute; left: 4px; bottom: 4px; display: flex; gap: 2px; }
+.card .vdots span { min-width: 16px; height: 16px; padding: 0 3px; border-radius: 4px; font-size: 9px; font-weight: 700; display: grid; place-items: center; background: rgba(0,0,0,.55); color: rgba(255,255,255,.75); }
+.card .vdots span.on { background: var(--owned); color: #fff; }
+.card .slot-tag { position: absolute; left: 4px; bottom: 4px; font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; background: var(--foil); color: #1d2340; }
+.chip.flag { display: inline-flex; align-items: center; gap: 6px; }
+.chip.flag[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.variants { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.vrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.vrow .stepper button { width: 40px; height: 40px; font-size: 20px; }
+.vrow .stepper output { min-width: 40px; font-size: 18px; }
+.price-box { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.price-grid div { background: var(--paper); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; min-width: 0; }
+.price-grid span { font-size: 11px; color: var(--muted); }
+.price-grid b { font-variant-numeric: tabular-nums; }
+
+/* ---- Set: zeldzaamheid, binder ---- */
+.rarity-box summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted); }
+.rarity-box[open] summary { margin-bottom: 8px; }
+.rar-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr auto; gap: 10px; align-items: center; font-size: 13px; padding: 3px 0; }
+.rar-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.binder-opts { align-items: center; }
+.input.mini { width: auto; min-height: 34px; padding: 4px 8px; }
+.binder { display: flex; flex-direction: column; gap: 16px; }
+.binder-page { background: var(--sheet); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); }
+.binder-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.binder-grid { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 8px; max-width: calc(var(--cols, 3) * 170px); }
+.slot-empty { aspect-ratio: 63 / 88; border: 1px dashed var(--line); border-radius: 6px; }
+
+/* ---- Lijsten ---- */
+.result[data-open] { cursor: pointer; }
+.result .right { text-align: right; }
+.thumb-ph { width: 64px; aspect-ratio: 63 / 88; background: var(--line); border-radius: 4px; display: block; }
+.add-friend { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 8px; }
+@media (max-width: 520px) { .add-friend { grid-template-columns: 1fr; } }
+.result.friend { grid-template-columns: 40px 1fr auto; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 800; }
+
+/* ---- Pokédex ---- */
+.dex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.dex { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; background: var(--sheet); border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; min-width: 0; }
+.dex img { width: 72px; height: 72px; image-rendering: pixelated; filter: brightness(0); opacity: .18; }
+.dex.have { border-color: color-mix(in srgb, var(--owned) 50%, var(--line)); }
+.dex.have img { filter: none; opacity: 1; }
+.dex-no { font-size: 11px; color: var(--muted); }
+.dex-name { font-size: 12px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dex .qty { position: absolute; top: 6px; right: 6px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 999px; background: var(--owned); color: #fff; font-weight: 700; font-size: 11px; display: grid; place-items: center; }
+.tabbar a span { white-space: nowrap; }

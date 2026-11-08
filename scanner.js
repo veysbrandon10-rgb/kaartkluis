@@ -155,6 +155,10 @@
           <button class="chip" id="auto" aria-pressed="false">Doorlopend scannen</button>
           <button class="chip" id="autoadd" aria-pressed="false">Meteen toevoegen</button>
         </div>
+        <div class="chips" style="justify-content:center" role="group" aria-label="Versie bij toevoegen" id="vchips">
+          <span class="small muted" style="align-self:center">Versie:</span>
+          <button class="chip" data-v="" aria-pressed="true">Standaard</button><button class="chip" data-v="r" aria-pressed="false">Reverse holo</button><button class="chip" data-v="h" aria-pressed="false">Holo</button>
+        </div>
         <div class="scan-status" id="status">Leg de kaart in het kader, nummer onderaan goed zichtbaar en scherp.</div>
         <div class="results" id="results"></div>
         <section class="panel">
@@ -175,7 +179,15 @@
     const shootBtn = el.querySelector('#shoot');
     let stream = null, track = null, alive = true, busy = false, autoTimer = null, torchOn = false;
     let lastAdded = { id: null, at: 0 };
-    const opts = { auto: false, autoAdd: false };
+    const opts = { auto: false, autoAdd: false, v: '' };
+    el.querySelector('#vchips').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; opts.v = b.dataset.v; el.querySelectorAll('#vchips [data-v]').forEach((x) => x.setAttribute('aria-pressed', x === b)); });
+    async function addCard(lang, id, name) {
+      let code = opts.v;
+      if (code) { const d = await KK.details.load(lang, id); if (d && !KK.variantsOf(d).includes(code)) { KK.toast(`${name} bestaat niet als ${KK.VARIANT_NAMES[code].toLowerCase()}; standaard toegevoegd`); code = ''; } }
+      KK.addOne(lang, id, code); lastAdded = { id, at: Date.now() };
+      KK.toast(`Toegevoegd: ${name}${code ? ' (' + KK.VARIANT_NAMES[code].toLowerCase() + ')' : ''} · ${KK.totalQty(lang, id)} in bezit`);
+      if (results._cands) renderResults(results._cands, results._sure);
+    }
 
     // taal-chips
     const chips = el.querySelector('#lang-chips');
@@ -281,9 +293,7 @@
       if (sure && opts.autoAdd) {
         const id = cands[0].card.id;
         if (lastAdded.id !== id || Date.now() - lastAdded.at > 6000) {
-          KK.addOne(lang, id); lastAdded = { id, at: Date.now() };
-          KK.toast(`Toegevoegd: ${cands[0].card.name} (${KK.qty(lang, id)} in bezit)`);
-          renderResults(cands, sure);
+          await addCard(lang, id, cands[0].card.name);
         } else lastAdded.at = Date.now();
       }
     }
@@ -291,7 +301,7 @@
     function renderResults(cands, sure) {
       const lang = KK.settings.lang;
       results.innerHTML = cands.map((c, i) => {
-        const q = KK.qty(lang, c.card.id);
+        const q = KK.totalQty(lang, c.card.id);
         const official = c.set.cardCount ? c.set.cardCount.official : '';
         return `<div class="result${i === 0 && sure ? ' best' : ''}">
           ${c.card.image ? `<img src="${esc(KK.cardImg(c.card, 'low'))}" alt="" loading="lazy">` : '<span></span>'}
@@ -302,12 +312,11 @@
       results._cands = cands; results._sure = sure;
     }
     results.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-add]'); if (!b) return;
+      const b = e.target.closest('[data-add]');
+      if (!b) { const r = e.target.closest('.result'); const i = r ? [...results.children].indexOf(r) : -1; const c = (results._cands || [])[i]; if (c) KK.showCard(KK.settings.lang, c.card, c.set); return; }
       const lang = KK.settings.lang; const id = b.dataset.add;
-      KK.addOne(lang, id); lastAdded = { id, at: Date.now() };
       const c = (results._cands || []).find((x) => x.card.id === id);
-      KK.toast(`Toegevoegd: ${c ? c.card.name : id} (${KK.qty(lang, id)} in bezit)`);
-      renderResults(results._cands, results._sure);
+      addCard(lang, id, c ? c.card.name : id);
     });
 
     shootBtn.addEventListener('click', () => scanOnce(false));
