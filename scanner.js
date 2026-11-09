@@ -103,35 +103,56 @@
   }
 
   // ---------- Kandidaten zoeken in de kaartdatabank ----------
+  // Zoekt kaarten met dit nummer. Geeft { cands, info } terug; info beschrijft waar gezocht is (voor de melding).
   KK.findCandidates = async function (lang, parsed, nameText) {
     const sets = await KK.getSets(lang);
-    const order = {}; sets.forEach((s, i) => { order[s.id] = i; });
+    const order = {}; const byId = {}; sets.forEach((s, i) => { order[s.id] = i; byId[s.id] = s; });
+    const official = (s) => (s.cardCount && (s.cardCount.official || s.cardCount.total)) || 0;
+    const num = parsed.promo ? parsed.promo.num : parsed.num;
+    const info = { lang, searched: [], how: '' };
+    if (num == null) return Object.assign([], { info });
     let targets = [];
     if (parsed.promo) {
       const wanted = parsed.promo.id;
       targets = sets.filter((s) => s.id.toLowerCase() === wanted);
       if (!targets.length) targets = sets.filter((s) => /promo/i.test(s.name) && s.id.toLowerCase().startsWith(wanted.replace(/p$/, '')));
+      info.how = 'promo';
     }
     if (!targets.length && parsed.denom) {
-      targets = sets.filter((s) => s.cardCount && s.cardCount.official === parsed.denom);
+      targets = sets.filter((s) => official(s) === parsed.denom);
+      if (!targets.length) targets = sets.filter((s) => s.cardCount && s.cardCount.total === parsed.denom);
+      info.how = 'aantal';
     }
-    const num = parsed.promo && !parsed.denom ? parsed.promo.num : parsed.promo ? parsed.promo.num : parsed.num;
-    if (!targets.length || num == null) return [];
-    targets = targets.slice(-8); // hooguit de 8 nieuwste sets met dat aantal
-    const full = await Promise.all(targets.map((s) => KK.getSet(lang, s.id).catch(() => null)));
-    const cands = [];
-    full.forEach((set) => {
-      if (!set || !set.cards) return;
-      set.cards.forEach((c) => {
-        if (localNum(c.localId) === num) {
-          const ns = nameText ? nameScore(c.name, nameText) : 0;
-          const score = ns * 10 + (order[set.id] || 0) / sets.length;
-          cands.push({ card: c, set, score, nameMatch: ns });
-        }
-      });
-    });
+    const score = (c, set) => { const ns = nameText ? nameScore(c.name, nameText) : 0; return { card: c, set, score: ns * 10 + (order[set.id] || 0) / sets.length, nameMatch: ns }; };
+    let cands = [];
+    if (targets.length) {
+      targets = targets.slice(-8);
+      info.searched = targets.map((t) => t.name);
+      const full = await Promise.all(targets.map((t) => KK.getSet(lang, t.id).catch(() => null)));
+      full.forEach((set) => { if (set && set.cards) set.cards.forEach((c) => { if (localNum(c.localId) === num) cands.push(score(c, set)); }); });
+    }
+    // Reserve: zoek alle kaarten met dit nummer en kies sets waarvan het aantal (bijna) klopt
+    if (!cands.length) {
+      info.how = 'nummer';
+      const tries = [String(num).padStart(3, '0'), String(num)];
+      let list = [];
+      for (const t of tries) {
+        try { const r = await KK.api(lang, 'cards?localId=eq:' + encodeURIComponent(t)); if (Array.isArray(r) && r.length) { list = r; break; } } catch (e) {}
+      }
+      list = list.filter((c) => localNum(c.localId) === num && byId[KK.setIdOf(c.id)]);
+      let pick = list;
+      if (parsed.denom) {
+        const close = list.filter((c) => Math.abs(official(byId[KK.setIdOf(c.id)]) - parsed.denom) <= 3);
+        if (close.length) pick = close;
+      }
+      if (parsed.promo) { const pr = list.filter((c) => /promo/i.test(byId[KK.setIdOf(c.id)].name)); if (pr.length) pick = pr; }
+      pick.sort((a, b) => (order[KK.setIdOf(b.id)] || 0) - (order[KK.setIdOf(a.id)] || 0));
+      pick = pick.slice(0, 6);
+      info.searched = [...new Set(pick.map((c) => byId[KK.setIdOf(c.id)].name))];
+      cands = pick.map((c) => score(c, byId[KK.setIdOf(c.id)]));
+    }
     cands.sort((a, b) => b.score - a.score);
-    return cands.slice(0, 6);
+    return Object.assign(cands.slice(0, 6), { info });
   };
 
   // ---------- Weergave ----------
@@ -266,7 +287,7 @@
         const { parsed, nameText } = await recognizeFromSource(snap, r);
         await handleParsed(parsed, nameText, fromAuto);
       } catch (e) {
-        status.textContent = navigator.onLine ? 'Er ging iets mis bij het lezen. Probeer opnieuw.' : 'Offline: de herkenning en kaartdata hebben de eerste keer internet nodig.';
+        status.textContent = navigator.onLine ? 'Er ging iets mis: ' + (e && e.message ? e.message : 'onbekend') + '. Probeer opnieuw.' : 'Offline: de herkenning en kaartdata hebben de eerste keer internet nodig.';
       } finally { busy = false; shootBtn.disabled = false; }
     }
 
@@ -278,14 +299,21 @@
       }
       const label = parsed.promo ? `promo ${parsed.promo.num}` : `${parsed.num}/${parsed.denom}`;
       status.textContent = `Gelezen: ${label} — zoeken…`;
-      const cands = await KK.findCandidates(lang, parsed, nameText);
+      let cands = await KK.findCandidates(lang, parsed, nameText);
+      let usedLang = lang;
+      if (!cands.length && lang !== 'en') {
+        const en = await KK.findCandidates('en', parsed, nameText).catch(() => []);
+        if (en.length) { cands = en; usedLang = 'en'; }
+      }
       if (!alive) return;
+      if (usedLang !== lang) { KK.setLang('en'); renderChips(); KK.toast(`Niet gevonden in het ${KK.langName(lang)}; ik toon de Engelse kaart`); }
       if (!cands.length) {
-        status.textContent = `Gelezen: ${label}, maar geen kaart gevonden in het ${KK.langName(lang)}. Klopt de taal? Of typ het nummer.`;
+        const nSets = (await KK.getSets(lang).catch(() => [])).length;
+        status.textContent = `Gelezen: ${label}, maar geen kaart gevonden in het ${KK.langName(lang)} (${nSets} sets in de databank). Klopt de taal en het nummer?`;
         el.querySelector('#manual-in').value = parsed.promo ? `SVP ${parsed.promo.num}` : `${parsed.num}/${parsed.denom}`;
         return;
       }
-      const sure = cands.length === 1 || cands[0].nameMatch >= 0.75 && (cands.length < 2 || cands[1].nameMatch < 0.6);
+      const sure = (cands.info && cands.info.how === 'nummer') ? false : cands.length === 1 || cands[0].nameMatch >= 0.75 && (cands.length < 2 || cands[1].nameMatch < 0.6);
       status.textContent = sure ? `Gevonden: ${cands[0].card.name}` : `Gelezen: ${label}. Kies de juiste kaart:`;
       if (navigator.vibrate) navigator.vibrate(40);
       renderResults(cands, sure);
@@ -333,9 +361,11 @@
       e.preventDefault();
       const v = el.querySelector('#manual-in').value.trim(); if (!v) return;
       let parsed = KK.parseScan(v);
+      if (!parsed.denom && !parsed.promo) parsed = KK.parseScan(v.replace(/(\d)\s*[-\s.,]\s*(\d)/, '$1/$2'));
       if (!parsed.denom && !parsed.promo) { status.textContent = 'Typ het nummer zoals op de kaart, bv. 045/198 of SVP 085.'; return; }
       busy = true;
-      try { await handleParsed(parsed, '', false); } catch (err) { status.textContent = 'Opzoeken lukte niet. Controleer je internet.'; }
+      try { await handleParsed(parsed, '', false); }
+      catch (err) { status.textContent = (navigator.onLine ? 'Opzoeken lukte niet: ' + (err && err.message ? err.message : 'onbekende fout') : 'Je bent offline.') + ' Probeer opnieuw.'; }
       busy = false;
     });
 
