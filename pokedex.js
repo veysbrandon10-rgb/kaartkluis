@@ -24,7 +24,7 @@
   // welke Pokédex-nummers heb je (alle talen samen) → nummer → lijst {lang,id}
   function ownedDex() {
     const map = new Map(); const seen = new Set();
-    KK.collectionKeys((p) => KK.VAR_CODES.includes(p.code)).forEach((k) => {
+    KK.collectionKeys((p) => KK.isVar(p.code)).forEach((k) => {
       const p = KK.parseKey(k); const key = p.lang + '|' + p.id; if (seen.has(key)) return; seen.add(key);
       const d = KK.details.get(p.lang, p.id); if (!d || !d.d) return;
       d.d.forEach((n) => { if (!map.has(n)) map.set(n, []); map.get(n).push(p); });
@@ -89,7 +89,7 @@
     species().then((l) => {
       if (!alive) return; list = l; owned = ownedDex(); paintCount(); render();
       // details van je kaarten laden om ze aan Pokémon te koppelen
-      const keys = KK.collectionKeys((p) => KK.VAR_CODES.includes(p.code)).map(KK.parseKey);
+      const keys = KK.collectionKeys((p) => KK.isVar(p.code)).map(KK.parseKey);
       const byL = {}; keys.forEach((p) => { (byL[p.lang] = byL[p.lang] || new Set()).add(p.id); });
       const status = el.querySelector('#dex-status');
       KK.detailsReady.then(async () => {

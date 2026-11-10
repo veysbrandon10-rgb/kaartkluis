@@ -18,8 +18,8 @@
 
   const enc = (k) => k.replace(/\./g, '~');
   const dec = (k) => k.replace(/~/g, '.');
-  function toRemote(items) { const o = {}; for (const k in items) o[enc(k)] = [items[k].q, items[k].t]; return o; }
-  function fromRemote(o) { const items = {}; for (const k in (o || {})) { const v = o[k]; if (Array.isArray(v)) items[dec(k)] = { q: v[0], t: v[1] }; } return items; }
+  function toRemote(items) { const o = {}; for (const k in items) o[enc(k)] = items[k].m ? [items[k].q, items[k].t, items[k].m] : [items[k].q, items[k].t]; return o; }
+  function fromRemote(o) { const items = {}; for (const k in (o || {})) { const v = o[k]; if (Array.isArray(v)) items[dec(k)] = v[2] ? { q: v[0], t: v[1], m: v[2] } : { q: v[0], t: v[1] }; } return items; }
   KK.fromRemote = fromRemote;
 
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Firebase kon niet laden')); document.head.appendChild(s); }); }
@@ -204,7 +204,7 @@ service cloud.firestore {
       const e = m.get(key) || { lang: p.lang, id: p.id, total: 0, spare: 0, want: false, trade: false, byCode: {} };
       if (p.code === 'want') e.want = true;
       else if (p.code === 'trade') e.trade = true;
-      else if (KK.VAR_CODES.includes(p.code)) { e.total += it.q; e.byCode[p.code] = it.q; }
+      else if (KK.isVar(p.code)) { e.total += it.q; e.byCode[p.code] = it.q; }
       m.set(key, e);
     }
     m.forEach((e) => { e.spare = e.trade ? e.total : Object.values(e.byCode).reduce((s, q) => s + Math.max(0, q - 1), 0); });

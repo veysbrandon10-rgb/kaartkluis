@@ -34,7 +34,12 @@
     ['s-prof', 'Professor Program (cosmos holo)'], ['s-other', 'Andere stempel']];
   const ALL_CODES = VAR_CODES.concat(KK.STAMPS.map((x) => x[0]));
   KK.VAR_CODES = ALL_CODES;
-  KK.isVar = (code) => ALL_CODES.includes(code);
+  KK.isGraded = (code) => typeof code === 'string' && code.startsWith('g-');
+  KK.isVar = (code) => ALL_CODES.includes(code) || KK.isGraded(code);
+  // Conditie (Cardmarket-schaal) en gradeerbedrijven
+  KK.CONDITIONS = [['MT', 'Mint'], ['NM', 'Near Mint'], ['EX', 'Excellent'], ['GD', 'Good'], ['LP', 'Light Played'], ['PL', 'Played'], ['PO', 'Poor']];
+  KK.GRADERS = ['PSA', 'BGS (Beckett)', 'CGC', 'SGC', 'TAG', 'ACE', 'PCA', 'Ander'];
+  KK.GRADES = ['10', '9.5', '9', '8.5', '8', '7.5', '7', '6.5', '6', '5.5', '5', '4.5', '4', '3.5', '3', '2.5', '2', '1.5', '1', 'Authentic'];
   const col = store.get('kk-collection', { items: {} });
   if (!col.items) col.items = {};
   KK.collection = col;
@@ -48,7 +53,28 @@
   KK.setIdOf = (cardId) => cardId.slice(0, cardId.lastIndexOf('-'));
 
   KK.qty = (lang, id, code) => { const it = col.items[KK.vkey(lang, id, code || '')]; return it ? it.q : 0; };
-  KK.totalQty = (lang, id) => ALL_CODES.reduce((s, c) => s + KK.qty(lang, id, c), 0);
+  KK.totalQty = (lang, id) => ALL_CODES.reduce((s, c) => s + KK.qty(lang, id, c), 0) + KK.gradedOf(lang, id).length;
+  KK.meta = (lang, id, code) => { const it = col.items[KK.vkey(lang, id, code)]; return (it && it.m) || null; };
+  KK.condKey = (v) => 'c-' + (v || 'n');
+  KK.condOf = (lang, id, v) => { const it = col.items[KK.vkey(lang, id, KK.condKey(v))]; return it && it.q && it.m ? it.m.c : ''; };
+  KK.condName = (c) => (KK.CONDITIONS.find((x) => x[0] === c) || ['', ''])[1];
+  // gegradeerde exemplaren per kaart (index wordt bij elke wijziging opnieuw opgebouwd)
+  let gradedCache = null;
+  KK.gradedOf = (lang, id) => {
+    if (!gradedCache) {
+      gradedCache = new Map();
+      for (const k in col.items) {
+        const it = col.items[k]; if (!it.q || !it.m) continue;
+        const p = KK.parseKey(k); if (!KK.isGraded(p.code)) continue;
+        const key = p.lang + '|' + p.id;
+        if (!gradedCache.has(key)) gradedCache.set(key, []);
+        gradedCache.get(key).push({ code: p.code, m: it.m });
+      }
+    }
+    return gradedCache.get(lang + '|' + id) || [];
+  };
+  KK.gradeLabel = (m) => (m ? `${String(m.co || '').replace(/ \(.*\)/, '')} ${m.gr || ''}`.trim() : '');
+  KK.bestGrade = (lang, id) => { const g = KK.gradedOf(lang, id); if (!g.length) return ''; g.sort((a, b) => (parseFloat(b.m.gr) || 0) - (parseFloat(a.m.gr) || 0)); return KK.gradeLabel(g[0].m); };
   KK.flag = (lang, id, f) => KK.qty(lang, id, f) > 0;
 
   let saveTimer = null;
@@ -59,12 +85,26 @@
   KK.persistNow = () => { clearTimeout(saveTimer); store.set('kk-collection', col); };
 
   let indexCache = null;
-  function changed(detail) { indexCache = null; document.dispatchEvent(new CustomEvent('kk-change', { detail })); }
+  function changed(detail) { indexCache = null; gradedCache = null; document.dispatchEvent(new CustomEvent('kk-change', { detail })); }
 
   KK.setQty = (lang, id, q, code) => {
     q = Math.max(0, Math.min(999, q | 0));
     col.items[KK.vkey(lang, id, code || '')] = { q, t: Date.now() };
     persist(); changed({ lang, cardId: id, q, local: true });
+  };
+  KK.setItem = (lang, id, code, q, m) => {
+    col.items[KK.vkey(lang, id, code)] = Object.assign({ q: q ? 1 : 0, t: Date.now() }, m ? { m } : {});
+    persist(); changed({ lang, cardId: id, local: true });
+  };
+  KK.setCond = (lang, id, v, c) => KK.setItem(lang, id, KK.condKey(v), c ? 1 : 0, c ? { c } : null);
+  KK.addGraded = (lang, id, m) => KK.setItem(lang, id, 'g-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), 1, m);
+  KK.valueOf = (lang, id, code) => {
+    if (KK.isGraded(code)) { const m = KK.meta(lang, id, code); return m && m.val > 0 ? m.val : null; }
+    return KK.priceOf(KK.details.get(lang, id), code);
+  };
+  KK.codeLabel = (lang, id, code) => {
+    if (KK.isGraded(code)) { const m = KK.meta(lang, id, code); const d = KK.details.get(lang, id); return KK.gradeLabel(m) + (m && m.v ? ' · ' + KK.variantName(d, m.v) : ''); }
+    return KK.variantName(KK.details.get(lang, id), code);
   };
   KK.addOne = (lang, id, code) => KK.setQty(lang, id, KK.qty(lang, id, code) + 1, code);
   KK.setFlag = (lang, id, f, on) => KK.setQty(lang, id, on ? 1 : 0, f);
@@ -74,7 +114,7 @@
     for (const k in incoming) {
       const inc = incoming[k]; if (!inc || typeof inc.q !== 'number') continue;
       const cur = col.items[k];
-      if (!cur || (inc.t || 0) > (cur.t || 0)) { col.items[k] = { q: inc.q, t: inc.t || Date.now() }; n++; }
+      if (!cur || (inc.t || 0) > (cur.t || 0)) { col.items[k] = Object.assign({ q: inc.q, t: inc.t || Date.now() }, inc.m ? { m: inc.m } : {}); n++; }
     }
     if (n) { KK.persistNow(); changed({ merged: n }); }
     return n;
@@ -183,6 +223,7 @@
     return `<button class="card${q ? '' : ' missing'}" data-id="${esc(c.id)}"${code != null ? ` data-code="${code}"` : ''} aria-label="${esc(c.name)} ${esc(c.localId)}, ${q ? q + ' in bezit' : 'ontbreekt'}">
       <div class="art">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<div class="noimg">${esc(c.name)}<br>${esc(c.localId)}</div>`}
         ${q ? `<span class="qty">${q}</span>` : ''}${want ? `<span class="want" title="Op verlanglijst">${HEART}</span>` : ''}
+        ${KK.gradedOf(lang, c.id).length && code == null ? `<span class="grade-tag">${esc(KK.bestGrade(lang, c.id))}</span>` : ''}
         ${opts.label ? `<span class="slot-tag">${esc(opts.label)}</span>` : ''}${dots}</div>
       <div class="cap"><span class="nm">${esc(opts.caption || c.name)}</span><span class="num">${esc(opts.num || c.localId)}</span></div></button>`;
   };
@@ -271,7 +312,7 @@
 
     const master = () => KK.settings.master;
     const slotsOf = (c) => (master() ? KK.variantsOf(KK.details.get(lang, c.id)) : ['']);
-    const ownedSlot = (c, v) => (master() ? KK.qty(lang, c.id, v) > 0 : KK.totalQty(lang, c.id) > 0);
+    const ownedSlot = (c, v) => (master() ? KK.qty(lang, c.id, v) > 0 || KK.gradedOf(lang, c.id).some((g) => (g.m.v || '') === v) : KK.totalQty(lang, c.id) > 0);
 
     function counts() {
       let total = 0, owned = 0, value = 0;
@@ -279,6 +320,7 @@
         slotsOf(c).forEach((v) => { total++; if (ownedSlot(c, v)) owned++; });
         const d = KK.details.get(lang, c.id);
         KK.VAR_CODES.forEach((v) => { const q = KK.qty(lang, c.id, v); if (q) { const p = KK.priceOf(d, v); if (p) value += p * q; } });
+        KK.gradedOf(lang, c.id).forEach((g) => { if (g.m.val > 0) value += g.m.val; });
       });
       return { total, owned, value, official: (set.cardCount && set.cardCount.official) || set.cards.length };
     }
@@ -457,6 +499,8 @@
       </div>
       <div class="eyebrow" style="margin-top:16px">In bezit per versie</div>
       <div id="variants" class="variants"><div class="spinner"></div></div>
+      <div class="eyebrow" style="margin-top:16px">Gegradeerde exemplaren</div>
+      <div id="graded" class="graded"></div>
       <div id="price" class="price-box"></div>
       <a class="btn" style="margin-top:12px" target="_blank" rel="noopener" href="https://www.cardmarket.com/nl/Pokemon/Products/Search?searchString=${encodeURIComponent(card.name)}">Bekijk op Cardmarket ↗</a>`, (body) => {
       const flags = () => {
@@ -473,7 +517,9 @@
         const freeStamps = KK.STAMPS.filter((x) => !vs.includes(x[0]));
         body.querySelector('#variants').innerHTML = vs.map((v) => {
           const p = KK.priceOf(d, v);
-          return `<div class="vrow"><div><b>${esc(KK.variantName(d, v))}</b>${p ? `<span class="muted small"> · ≈ ${KK.euro(p)}</span>` : ''}</div>
+          const q = KK.qty(lang, card.id, v); const cond = KK.condOf(lang, card.id, v);
+          return `<div class="vrow"><div class="vname"><span><b>${esc(KK.variantName(d, v))}</b>${p ? `<span class="muted small"> · ≈ ${KK.euro(p)}</span>` : ''}</span>
+              ${q ? `<label class="cond"><span class="sr-only">Conditie ${esc(KK.variantName(d, v))}</span><select class="input mini" data-cond="${v}"><option value="">Conditie…</option>${KK.CONDITIONS.map(([c, n]) => `<option value="${c}"${c === cond ? ' selected' : ''}>${c} · ${n}</option>`).join('')}</select></label>` : ''}</div>
             <div class="stepper"><button data-dec="${v}" aria-label="Eén minder ${esc(KK.variantName(d, v))}">−</button><output class="num" data-q="${v}">${KK.qty(lang, card.id, v)}</output><button data-inc="${v}" aria-label="Eén meer ${esc(KK.variantName(d, v))}">+</button></div></div>`;
         }).join('') + (d ? '' : '<div class="muted small">Varianten konden niet geladen worden. Je telt nu de standaardversie.</div>')
           + (freeStamps.length ? `<div class="add-stamp"><label class="small" for="stamp-pick">Gestempelde versie toevoegen</label>
@@ -481,6 +527,7 @@
               <button class="btn" id="stamp-add" type="button">Toevoegen</button></div></div>` : '');
         const sa = body.querySelector('#stamp-add');
         if (sa) sa.addEventListener('click', () => { const v = body.querySelector('#stamp-pick').value; extraStamps.push(v); KK.setQty(lang, card.id, KK.qty(lang, card.id, v) + 1, v); paint(KK.details.get(lang, card.id)); });
+        paintGraded(d, vs);
         const extra = [];
         if (d && d.r) extra.push('Zeldzaamheid: ' + d.r);
         body.querySelector('#card-extra').innerHTML = extra.map(esc).join('<br>');
@@ -494,11 +541,46 @@
             </div><div class="muted small">Richtprijzen in euro, bijgewerkt ${new Date(d.ts).toLocaleDateString('nl-BE')}. Prijzen kunnen per variant afwijken.</div>`;
         } else pb.innerHTML = d ? '<div class="muted small">Geen prijs bekend voor deze kaart.</div>' : '';
       };
+      const paintGraded = (d, vs) => {
+        const box = body.querySelector('#graded'); const list = KK.gradedOf(lang, card.id);
+        box.innerHTML = (list.length ? list.map((g) => `<div class="grow"><span class="grade-pill">${esc(KK.gradeLabel(g.m))}</span>
+            <div class="meta small">${g.m.v != null ? esc(KK.variantName(d, g.m.v)) : ''}${g.m.cert ? ' · cert ' + esc(g.m.cert) : ''}${g.m.val > 0 ? ' · ' + KK.euro(g.m.val) : ''}</div>
+            <button class="btn" data-gdel="${g.code}">Verwijder</button></div>`).join('') : '<div class="muted small">Geen. Heb je deze kaart in een slab? Voeg hem hieronder toe.</div>')
+          + `<details class="gadd"${list.length ? '' : ''}><summary class="small">+ Gegradeerde kaart toevoegen</summary>
+            <form class="gform" id="gform">
+              <label class="small">Bedrijf<select class="input" name="co">${KK.GRADERS.map((g) => `<option>${esc(g)}</option>`).join('')}</select></label>
+              <label class="small">Cijfer<select class="input" name="gr">${KK.GRADES.map((g) => `<option>${g}</option>`).join('')}</select></label>
+              <label class="small">Versie<select class="input" name="v">${vs.map((v) => `<option value="${v}">${esc(KK.variantName(d, v))}</option>`).join('')}</select></label>
+              <label class="small">Certificaatnummer<input class="input" name="cert" inputmode="numeric" autocomplete="off" placeholder="optioneel"></label>
+              <label class="small">Waarde (€)<input class="input" name="val" inputmode="decimal" autocomplete="off" placeholder="optioneel, bv. 45"></label>
+              <button class="btn primary" type="submit">Toevoegen</button></form></details>`;
+        box.querySelector('#gform').addEventListener('submit', (e) => {
+          e.preventDefault(); const f = new FormData(e.target);
+          const val = parseFloat(String(f.get('val') || '').replace(',', '.'));
+          const m = { co: f.get('co'), gr: f.get('gr'), v: f.get('v') || '', cert: String(f.get('cert') || '').trim().slice(0, 30) };
+          if (val > 0) m.val = Math.round(val * 100) / 100;
+          KK.addGraded(lang, card.id, m); KK.toast(`${KK.gradeLabel(m)} toegevoegd`); paintGraded(d, vs);
+        });
+      };
       body.addEventListener('click', (e) => {
+        const del = e.target.closest('[data-gdel]');
+        if (del) {
+          if (del.dataset.sure !== '1') { del.dataset.sure = '1'; del.textContent = 'Zeker?'; return; }
+          KK.setItem(lang, card.id, del.dataset.gdel, 0, null); paint(KK.details.get(lang, card.id)); return;
+        }
         const inc = e.target.closest('[data-inc]'); const dec = e.target.closest('[data-dec]');
         const v = inc ? inc.dataset.inc : dec ? dec.dataset.dec : null; if (v == null) return;
-        KK.setQty(lang, card.id, KK.qty(lang, card.id, v) + (inc ? 1 : -1), v);
-        body.querySelector(`[data-q="${v}"]`).textContent = KK.qty(lang, card.id, v);
+        const before = KK.qty(lang, card.id, v);
+        KK.setQty(lang, card.id, before + (inc ? 1 : -1), v);
+        const after = KK.qty(lang, card.id, v);
+        if (after === 0 && KK.condOf(lang, card.id, v)) KK.setCond(lang, card.id, v, '');
+        if ((before === 0) !== (after === 0)) paint(KK.details.get(lang, card.id));
+        else body.querySelector(`[data-q="${v}"]`).textContent = after;
+      });
+      body.addEventListener('change', (e) => {
+        const sel = e.target.closest('[data-cond]'); if (!sel) return;
+        KK.setCond(lang, card.id, sel.dataset.cond, sel.value);
+        if (sel.value) KK.toast('Conditie: ' + KK.condName(sel.value));
       });
       paint(KK.details.get(lang, card.id));
       KK.details.load(lang, card.id).then((d) => { if (body.isConnected) paint(d); });
@@ -511,10 +593,10 @@
     const name = d ? d.n : id; const img = d && d.i ? d.i + '/low.webp' : '';
     return `<div class="result" data-open="${esc(lang)}|${esc(id)}">
       ${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : '<span class="thumb-ph"></span>'}
-      <div class="meta"><b>${esc(name)}</b><span class="small muted">${esc(d ? d.sn : KK.setIdOf(id))} · ${esc(d ? d.l + (d.so ? '/' + d.so : '') : '')}${code != null ? ' · ' + esc(KK.variantName(d, code)) : ''} · ${esc(KK.langName(lang))}</span></div>
+      <div class="meta"><b>${esc(name)}</b><span class="small muted">${esc(d ? d.sn : KK.setIdOf(id))} · ${esc(d ? d.l + (d.so ? '/' + d.so : '') : '')}${code != null ? ' · ' + esc(KK.codeLabel(lang, id, code)) : ''} · ${esc(KK.langName(lang))}</span></div>
       <div class="right small">${right || ''}</div></div>`;
   };
-  KK.lineText = (lang, id, code) => { const d = KK.details.get(lang, id); return `${d ? d.n : id} – ${d ? d.sn : KK.setIdOf(id)} ${d ? d.l + (d.so ? '/' + d.so : '') : ''}${code ? ' (' + KK.variantName(d, code) + ')' : ''} [${KK.langName(lang)}]`; };
+  KK.lineText = (lang, id, code) => { const d = KK.details.get(lang, id); return `${d ? d.n : id} – ${d ? d.sn : KK.setIdOf(id)} ${d ? d.l + (d.so ? '/' + d.so : '') : ''}${code ? ' (' + KK.codeLabel(lang, id, code) + ')' : ''} [${KK.langName(lang)}]`; };
   KK.openFromRow = (container) => container.addEventListener('click', (e) => {
     const r = e.target.closest('[data-open]'); if (!r || e.target.closest('button')) return;
     const [lang, id] = r.dataset.open.split('|'); const d = KK.details.get(lang, id);
@@ -551,7 +633,7 @@
       </div>
       <div class="chips" role="tablist">
         <button class="chip" data-tab="sets">Per set</button><button class="chip" data-tab="want">Verlanglijst</button>
-        <button class="chip" data-tab="dupe">Dubbels &amp; ruil</button><button class="chip" data-tab="stamp">Gestempeld</button><button class="chip" data-tab="compare">Vergelijken</button>
+        <button class="chip" data-tab="dupe">Dubbels &amp; ruil</button><button class="chip" data-tab="stamp">Gestempeld</button><button class="chip" data-tab="graded">Gegradeerd</button><button class="chip" data-tab="compare">Vergelijken</button>
       </div>
       <div id="col-area"></div>`;
     el.querySelectorAll('[data-tab]').forEach((b) => { b.setAttribute('aria-pressed', b.dataset.tab === colTab); b.addEventListener('click', () => { location.hash = '#/collectie/' + b.dataset.tab; }); });
@@ -563,7 +645,7 @@
     const byLang = {}; ownedKeys.forEach((p) => { (byLang[p.lang] = byLang[p.lang] || new Set()).add(p.id); });
     const paintValue = () => {
       let v = 0, known = 0, all = 0;
-      ownedKeys.forEach((p) => { all++; const pr = KK.priceOf(KK.details.get(p.lang, p.id), p.code); if (pr) { v += pr * KK.qty(p.lang, p.id, p.code); known++; } });
+      ownedKeys.forEach((p) => { all++; const pr = KK.valueOf(p.lang, p.id, p.code); if (pr) { v += pr * KK.qty(p.lang, p.id, p.code); known++; } });
       const ve = el.querySelector('#col-value'); if (!ve) return;
       ve.textContent = all ? KK.euro(v) : '€ 0';
       el.querySelector('#col-value-sub').textContent = all && known < all ? `waarde · prijs van ${known}/${all} bekend` : 'waarde (Cardmarket)';
@@ -579,6 +661,7 @@
       if (colTab === 'want') return renderWant();
       if (colTab === 'dupe') return renderDupe();
       if (colTab === 'stamp') return renderStamp();
+      if (colTab === 'graded') return renderGradedTab();
       if (colTab === 'compare') { if (KK.renderCompare) KK.renderCompare(area); else area.innerHTML = '<div class="empty">Vergelijken vraagt synchronisatie (zie Instellingen).</div>'; }
     }
 
@@ -638,13 +721,26 @@
       ensureAndRepaint(keys, () => { const r = area.querySelector('#rows'); if (r) r.innerHTML = rows(); });
     }
 
+    function renderGradedTab() {
+      const keys = KK.collectionKeys((p) => KK.isGraded(p.code)).map(KK.parseKey)
+        .sort((a, b) => (parseFloat((KK.meta(b.lang, b.id, b.code) || {}).gr) || 0) - (parseFloat((KK.meta(a.lang, a.id, a.code) || {}).gr) || 0));
+      if (!keys.length) { area.innerHTML = '<div class="empty">Nog geen gegradeerde kaarten. Open een kaart en kies "Gegradeerde kaart toevoegen".</div>'; return; }
+      const total = keys.reduce((s, p) => s + (KK.valueOf(p.lang, p.id, p.code) || 0), 0);
+      const rows = () => keys.map((p) => { const m = KK.meta(p.lang, p.id, p.code) || {}; return KK.listRow(p.lang, p.id, p.code, `${m.val > 0 ? '<b>' + KK.euro(m.val) + '</b>' : ''}${m.cert ? '<br><span class="muted">cert ' + esc(m.cert) + '</span>' : ''}`); }).join('');
+      area.innerHTML = `<div class="muted small">${keys.length} gegradeerde kaarten${total ? ' · samen ' + KK.euro(total) + ' (eigen waarde)' : ''}.</div>
+        <div class="btn-row"><button class="btn" id="copy">Kopieer lijst</button></div><div class="results" id="rows">${rows()}</div>`;
+      area.querySelector('#copy').addEventListener('click', () => KK.copyText('Mijn gegradeerde kaarten:\n' + keys.map((p) => { const m = KK.meta(p.lang, p.id, p.code) || {}; return KK.lineText(p.lang, p.id, p.code) + (m.cert ? ' cert ' + m.cert : ''); }).join('\n')));
+      KK.openFromRow(area.querySelector('#rows'));
+      ensureAndRepaint(keys, () => { const r = area.querySelector('#rows'); if (r) r.innerHTML = rows(); });
+    }
+
     function ensureAndRepaint(keys, repaint) {
       const byL = {}; keys.forEach((p) => { (byL[p.lang] = byL[p.lang] || new Set()).add(p.id); });
       KK.detailsReady.then(async () => { for (const l of Object.keys(byL)) { if (!alive) return; await KK.details.ensure(l, [...byL[l]], null, abort.signal); } if (alive) repaint(); });
     }
 
     renderTab();
-    const onChange = () => { if (colTab === 'want' || colTab === 'dupe' || colTab === 'stamp') renderTab(); paintValue(); };
+    const onChange = () => { if (colTab === 'want' || colTab === 'dupe' || colTab === 'stamp' || colTab === 'graded') renderTab(); paintValue(); };
     document.addEventListener('kk-change', onChange);
     return () => { alive = false; abort.abort(); document.removeEventListener('kk-change', onChange); };
   };
@@ -656,16 +752,21 @@
     await KK.detailsReady;
     for (const l of Object.keys(ids)) await KK.details.ensure(l, [...ids[l]], (d, t) => onStatus && onStatus(`Gegevens ophalen ${d}/${t}`));
     const cards = {};
-    keys.forEach((p) => { const k = p.lang + '|' + p.id; const c = (cards[k] = cards[k] || { lang: p.lang, id: p.id, v: {}, want: false, trade: false }); if (p.code === 'want') c.want = true; else if (p.code === 'trade') c.trade = true; else c.v[p.code] = col.items[KK.vkey(p.lang, p.id, p.code)].q; });
+    keys.forEach((p) => { const k = p.lang + '|' + p.id; const c = (cards[k] = cards[k] || { lang: p.lang, id: p.id, v: {}, want: false, trade: false }); if (p.code === 'want') c.want = true; else if (p.code === 'trade') c.trade = true; else if (KK.isVar(p.code)) c.v[p.code] = col.items[KK.vkey(p.lang, p.id, p.code)].q; });
     const num = (x) => (x == null ? '' : x.toFixed(2).replace('.', ','));
     const cell = (x) => { const s = String(x == null ? '' : x); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const rows = [['Taal', 'Set-code', 'Set', 'Nummer', 'Naam', 'Versie', 'Aantal', 'Verlanglijst', 'Mag weg', 'Zeldzaamheid', 'Prijs per stuk (EUR)', 'Waarde (EUR)']];
+    const rows = [['Taal', 'Set-code', 'Set', 'Nummer', 'Naam', 'Versie', 'Aantal', 'Verlanglijst', 'Mag weg', 'Zeldzaamheid', 'Conditie', 'Gradering', 'Certificaatnummer', 'Prijs per stuk (EUR)', 'Waarde (EUR)']];
     Object.values(cards).forEach((c) => {
       const d = KK.details.get(c.lang, c.id);
       const base = [KK.langName(c.lang), KK.setIdOf(c.id), d ? d.sn : '', d ? d.l + (d.so ? '/' + d.so : '') : '', d ? d.n : c.id];
       const codes = Object.keys(c.v);
-      if (!codes.length) rows.push(base.concat(['', 0, c.want ? 'ja' : '', c.trade ? 'ja' : '', d ? d.r : '', '', '']));
-      codes.forEach((code) => { const pr = KK.priceOf(d, code); rows.push(base.concat([KK.variantName(d, code), c.v[code], c.want ? 'ja' : '', c.trade ? 'ja' : '', d ? d.r : '', num(pr), num(pr ? pr * c.v[code] : null)])); });
+      if (!codes.length) rows.push(base.concat(['', 0, c.want ? 'ja' : '', c.trade ? 'ja' : '', d ? d.r : '', '', '', '', '', '']));
+      codes.forEach((code) => {
+        const pr = KK.valueOf(c.lang, c.id, code); const g = KK.isGraded(code) ? KK.meta(c.lang, c.id, code) || {} : null;
+        const versie = g ? KK.variantName(d, g.v || '') : KK.variantName(d, code);
+        const cond = g ? '' : KK.condName(KK.condOf(c.lang, c.id, code));
+        rows.push(base.concat([versie, c.v[code], c.want ? 'ja' : '', c.trade ? 'ja' : '', d ? d.r : '', cond, g ? KK.gradeLabel(g) : '', g ? g.cert || '' : '', num(pr), num(pr ? pr * c.v[code] : null)]));
+      });
     });
     const csv = '﻿' + rows.map((r) => r.map(cell).join(';')).join('\r\n');
     KK.download('kaartkluis-collectie-' + new Date().toISOString().slice(0, 10) + '.csv', csv, 'text/csv;charset=utf-8');

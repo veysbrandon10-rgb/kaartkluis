@@ -1,5 +1,5 @@
 /* Kaartkluis — offline: app zelf, kaartdata en afbeeldingen worden op het toestel bewaard */
-const VERSION = 'kk-v5';
+const VERSION = 'kk-v6';
 const KEEP = [VERSION + '-shell', 'kk-data', 'kk-img', 'kk-lib'];
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'scanner.js', 'sync.js', 'details.js', 'pokedex.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
