@@ -217,11 +217,13 @@ textarea.input { min-height: 120px; font-family: ui-monospace, Menlo, monospace;
   border: 3px solid rgba(255,255,255,.9); border-radius: 14px;
   box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
 }
-.cam .frame::after {
-  content: "nummer hier"; position: absolute; left: 0; right: 0; bottom: 0; height: 13%;
-  border-top: 2px dashed rgba(255,255,255,.7); color: rgba(255,255,255,.85); font-size: 11px; font-weight: 600;
-  display: grid; place-items: center; letter-spacing: .05em;
+.cam .frame .zone {
+  position: absolute; bottom: 2%; height: 11%; width: 46%;
+  border: 2px dashed rgba(255,255,255,.75); border-radius: 6px;
 }
+.cam .frame .zone-l { left: 2%; }
+.cam .frame .zone-r { right: 2%; }
+.cam .frame .zone::after { content: "nummer"; position: absolute; top: -18px; left: 4px; font-size: 10px; font-weight: 700; color: rgba(255,255,255,.85); letter-spacing: .05em; }
 .cam .cam-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; text-align: center; padding: 24px; }
 .scan-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .scan-status { text-align: center; min-height: 1.5em; color: var(--muted); font-size: 14px; }

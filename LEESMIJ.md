@@ -86,7 +86,7 @@ Dan is synchroniseren op elk toestel meteen ingesteld; iedereen moet alleen nog 
 - **Pokédex:** elke Pokémon begint als silhouet en kleurt in zodra je er een kaart van hebt (alle talen samen). Tik een Pokémon voor al zijn kaarten.
 - **Gezin & vrienden:** bij Meer → Gezin & vrienden zie je je vriendcode. Geef die aan een gezinslid en voeg zijn of haar code toe. Als jullie elkaar allebei toegevoegd hebben, toont Collectie → Vergelijken wie een dubbel heeft die de ander mist.
 - **Excel:** Meer → Excel-lijst (CSV) maakt een lijst van je hele collectie met aantallen en prijzen.
-- **Scannen:** leg de kaart in het kader zodat het nummer onderaan scherp in de gestippelde strook staat en tik **Scan kaart**. Kies vooraf de versie (standaard, reverse, holo). **Doorlopend scannen** + **Meteen toevoegen** is handig voor een stapel.
+- **Scannen:** het scannen gaat vanzelf (*Doorlopend scannen* staat standaard aan). Leg de kaart plat op tafel, houd je gsm er recht boven zodat de kaart het kader vult, en zorg dat het nummer in een van de twee vakjes onderaan staat. Binnen een seconde verschijnt de kaart. Kies vooraf de versie (standaard, reverse, holo, stempel). Met *Meteen toevoegen* gaat een stapel nog sneller.
 - **Offline:** sets, afbeeldingen en prijzen die je al eens bekeek, blijven op je gsm bewaard.
 
 ## Goed om te weten

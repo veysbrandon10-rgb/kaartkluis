@@ -29,7 +29,7 @@
   async function ocr(canvas, mode) {
     const w = await getWorker();
     if (mode === 'number') {
-      await w.setParameters({ tessedit_char_whitelist: '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ-', tessedit_pageseg_mode: '11' });
+      await w.setParameters({ tessedit_char_whitelist: '0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ-', tessedit_pageseg_mode: '6' });
     } else {
       await w.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: mode === 'name' ? '7' : '11' });
     }
@@ -38,18 +38,36 @@
   }
 
   // ---------- Beeld bijsnijden en verbeteren ----------
-  function cropTo(src, sx, sy, sw, sh, targetW, invert) {
+  // Snijdt een stuk uit, maakt het grijs en daarna scherp zwart-wit (Otsu-drempel). targetH = hoogte in pixels.
+  function cropTo(src, sx, sy, sw, sh, targetH, invert, binarize) {
     const c = document.createElement('canvas');
-    const scale = targetW / sw;
-    c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
+    const scale = targetH / sh;
+    c.width = Math.max(1, Math.round(sw * scale)); c.height = Math.max(1, Math.round(sh * scale));
     const g = c.getContext('2d', { willReadFrequently: true });
     g.imageSmoothingQuality = 'high';
     g.drawImage(src, sx, sy, sw, sh, 0, 0, c.width, c.height);
     const img = g.getImageData(0, 0, c.width, c.height); const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      let v = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-      v = (v - 128) * 1.7 + 128; if (invert) v = 255 - v;
-      v = v < 0 ? 0 : v > 255 ? 255 : v;
+    const gray = new Uint8ClampedArray(d.length / 4);
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) { gray[j] = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0; }
+    // plaatselijke drempel: elk pixel wordt vergeleken met het gemiddelde van zijn omgeving,
+    // zodat schaduw, glans of een donkere tafel de tekst niet wegdrukken
+    const W = c.width, H = c.height; let integ = null, rad = 0;
+    if (binarize !== false) {
+      rad = Math.max(8, Math.round(H / 6));
+      integ = new Float64Array((W + 1) * (H + 1));
+      for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += gray[y * W + x]; integ[(y + 1) * (W + 1) + x + 1] = integ[y * (W + 1) + x + 1] + row; } }
+    }
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+      let v;
+      if (binarize === false) v = Math.max(0, Math.min(255, (gray[j] - 128) * 1.6 + 128));
+      else {
+        const x = j % W, y = (j / W) | 0;
+        const x0 = Math.max(0, x - rad), x1 = Math.min(W, x + rad + 1), y0 = Math.max(0, y - rad), y1 = Math.min(H, y + rad + 1);
+        const sum = integ[y1 * (W + 1) + x1] - integ[y0 * (W + 1) + x1] - integ[y1 * (W + 1) + x0] + integ[y0 * (W + 1) + x0];
+        const mean = sum / ((x1 - x0) * (y1 - y0));
+        v = gray[j] < mean - 12 ? 0 : 255;
+      }
+      if (invert) v = 255 - v;
       d[i] = d[i + 1] = d[i + 2] = v;
     }
     g.putImageData(img, 0, 0);
@@ -165,7 +183,7 @@
       <div class="scanner">
         <div class="cam" id="cam">
           <video id="video" playsinline muted></video>
-          <div class="frame" aria-hidden="true"></div>
+          <div class="frame" aria-hidden="true"><span class="zone zone-l"></span><span class="zone zone-r"></span></div>
           <div class="cam-msg" id="cam-msg">Camera starten…</div>
         </div>
         <div class="scan-actions">
@@ -173,13 +191,13 @@
           <button class="btn" id="torch" hidden>Lamp</button>
         </div>
         <div class="chips" style="justify-content:center">
-          <button class="chip" id="auto" aria-pressed="false">Doorlopend scannen</button>
+          <button class="chip" id="auto" aria-pressed="true">Doorlopend scannen</button>
           <button class="chip" id="autoadd" aria-pressed="false">Meteen toevoegen</button>
         </div>
         <div class="vpick"><label class="small muted" for="vsel">Versie bij toevoegen</label>
           <select id="vsel" class="input mini"><option value="">Standaard</option><option value="r">Reverse holo</option><option value="h">Holo</option>
             <optgroup label="Gestempeld">${KK.STAMPS.map((x) => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}</optgroup></select></div>
-        <div class="scan-status" id="status">Leg de kaart in het kader, nummer onderaan goed zichtbaar en scherp.</div>
+        <div class="scan-status" id="status">Leg de kaart plat op tafel en houd je gsm er recht boven, zodat de kaart het kader vult. Het nummer moet in een van de twee vakjes onderaan staan.</div>
         <div class="results" id="results"></div>
         <section class="panel">
           <h2>Typ het nummer</h2>
@@ -197,9 +215,10 @@
     const status = el.querySelector('#status');
     const results = el.querySelector('#results');
     const shootBtn = el.querySelector('#shoot');
-    let stream = null, track = null, alive = true, busy = false, autoTimer = null, torchOn = false;
+    let stream = null, track = null, alive = true, busy = false, torchOn = false;
     let lastAdded = { id: null, at: 0 };
-    const opts = { auto: false, autoAdd: false, v: '' };
+    const opts = { auto: true, autoAdd: false, v: '' };
+    let lastSeen = { key: '', at: 0 };
     el.querySelector('#vsel').addEventListener('change', (e) => { opts.v = e.target.value; });
     async function addCard(lang, id, name) {
       let code = opts.v;
@@ -230,7 +249,7 @@
         const caps = track.getCapabilities ? track.getCapabilities() : {};
         if (caps.torch) el.querySelector('#torch').hidden = false;
         if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
-        getWorker((t) => { if (!busy) status.textContent = t; }).then(() => { if (!busy && alive) status.textContent = 'Klaar. Leg de kaart in het kader en tik op Scan kaart.'; }).catch(() => {});
+        getWorker((t) => { if (!busy) status.textContent = t; }).then(() => { if (!busy && alive) status.textContent = 'Klaar. Leg een kaart in het kader.'; if (opts.auto) loop(); }).catch(() => {});
       } catch (e) {
         msg.textContent = e && e.name === 'NotAllowedError'
           ? 'Geen toestemming voor de camera. Sta de camera toe via het slotje naast het adres, of typ het nummer hieronder.'
@@ -256,24 +275,32 @@
       return { x: (fx + offX) / scale, y: (fy + offY) / scale, w: fw / scale, h: fh / scale, vw, vh };
     }
 
+    // Leest het kaartnummer. Nieuwe kaarten hebben het linksonder, oudere rechtsonder.
+    // We lezen dus twee kleine stukjes in plaats van de hele onderrand: dat is veel sneller.
     async function recognizeFromSource(src, r) {
-      const clampY = (y) => Math.max(0, Math.min(r.vh - 1, y));
-      // nummerstrook: onderste ±16% van de kaart, iets ruimer dan het kader
-      const by = clampY(r.y + r.h * 0.83), bh = clampY(r.y + r.h * 1.04) - by;
-      const numCanvas = cropTo(src, Math.max(0, r.x - r.w * 0.03), by, Math.min(r.vw, r.w * 1.06), bh, 1600, false);
-      let text = await ocr(numCanvas, 'number');
-      let parsed = KK.parseScan(text);
-      if (!parsed.denom && !parsed.promo) {
-        text = await ocr(cropTo(src, Math.max(0, r.x - r.w * 0.03), by, Math.min(r.vw, r.w * 1.06), bh, 1600, true), 'number');
-        parsed = KK.parseScan(text);
+      const clampX = (x) => Math.max(0, Math.min(r.vw - 1, x)); const clampY = (y) => Math.max(0, Math.min(r.vh - 1, y));
+      const zone = (x0, x1) => { const sx = clampX(r.x + r.w * x0), sy = clampY(r.y + r.h * 0.8); return [sx, sy, clampX(r.x + r.w * x1) - sx, clampY(r.y + r.h * 1.05) - sy]; };
+      const zones = [zone(-0.03, 0.55), zone(0.45, 1.03)];
+      const order = lastZone === 1 ? [1, 0] : [0, 1];
+      const tries = order.map((i) => ({ i, bin: true, h: 230 })).concat(order.map((i) => ({ i, bin: false, h: 320 })));
+      let parsed = { num: null, denom: null, promo: null }, raw = '';
+      for (const t of tries) {
+        const [sx, sy, sw, sh] = zones[t.i]; if (sw < 10 || sh < 10) continue;
+        const crop = cropTo(src, sx, sy, sw, sh, Math.min(t.h, sh * 2.5), false, t.bin);
+        raw = await ocr(crop, 'number');
+        if (window.KK_DEBUG) window.KK_DEBUG.push({ zone: t.i, bin: t.bin, raw, img: crop.toDataURL() });
+        parsed = KK.parseScan(raw);
+        if (parsed.denom || parsed.promo) { lastZone = t.i; break; }
+        if (!alive) break;
       }
-      let nameText = '';
-      if ((parsed.denom || parsed.promo) && !/^(ja|zh|ko|th|ru)/.test(KK.settings.lang)) {
+      const getName = async () => {
+        if (!KK.isLatin(KK.settings.lang)) return '';
         const ny = clampY(r.y + r.h * 0.015), nh = r.h * 0.11;
-        nameText = await ocr(cropTo(src, r.x + r.w * 0.04, ny, r.w * 0.78, nh, 1200, false), 'name');
-      }
-      return { parsed, nameText, raw: text };
+        return ocr(cropTo(src, clampX(r.x + r.w * 0.04), ny, r.w * 0.78, nh, 70, false, false), 'name');
+      };
+      return { parsed, getName, raw };
     }
+    let lastZone = 0;
 
     async function scanOnce(fromAuto) {
       if (busy || !video.videoWidth) return;
@@ -284,28 +311,42 @@
         snap.width = video.videoWidth; snap.height = video.videoHeight;
         snap.getContext('2d').drawImage(video, 0, 0);
         const r = frameRect();
-        const { parsed, nameText } = await recognizeFromSource(snap, r);
-        await handleParsed(parsed, nameText, fromAuto);
+        const { parsed, getName } = await recognizeFromSource(snap, r);
+        await handleParsed(parsed, getName, fromAuto);
       } catch (e) {
         status.textContent = navigator.onLine ? 'Er ging iets mis: ' + (e && e.message ? e.message : 'onbekend') + '. Probeer opnieuw.' : 'Offline: de herkenning en kaartdata hebben de eerste keer internet nodig.';
       } finally { busy = false; shootBtn.disabled = false; }
     }
 
-    async function handleParsed(parsed, nameText, fromAuto) {
+    async function handleParsed(parsed, nameArg, fromAuto) {
       const lang = KK.settings.lang;
       if (!parsed.denom && !parsed.promo) {
-        if (!fromAuto) status.textContent = 'Geen kaartnummer gevonden. Kom iets dichterbij, vermijd schittering, of typ het nummer.';
+        status.textContent = fromAuto ? 'Zoeken naar het nummer… houd de kaart stil in het kader.' : 'Geen kaartnummer gevonden. Kom iets dichterbij, vermijd schittering, of typ het nummer.';
         return;
       }
       const label = parsed.promo ? `promo ${parsed.promo.num}` : `${parsed.num}/${parsed.denom}`;
+      const seenKey = lang + label;
+      if (fromAuto && lastSeen.key === seenKey && Date.now() - lastSeen.at < 8000) { lastSeen.at = Date.now(); return; } // dezelfde kaart ligt er nog
+      lastSeen = { key: seenKey, at: Date.now() };
+      let nameText = typeof nameArg === 'string' ? nameArg : '';
       status.textContent = `Gelezen: ${label} — zoeken…`;
       let cands = await KK.findCandidates(lang, parsed, nameText);
+      if (cands.length > 1 && typeof nameArg === 'function') {
+        status.textContent = `Gelezen: ${label} — naam controleren…`;
+        nameText = await nameArg().catch(() => '');
+        if (nameText) cands = await KK.findCandidates(lang, parsed, nameText);
+      }
       let usedLang = lang;
       if (!cands.length && lang !== 'en') {
         const en = await KK.findCandidates('en', parsed, nameText).catch(() => []);
         if (en.length) { cands = en; usedLang = 'en'; }
       }
       if (!alive) return;
+      if (fromAuto && (!cands.length || (cands.info && cands.info.how === 'nummer'))) {
+        lastSeen = { key: '', at: 0 }; // waarschijnlijk verkeerd gelezen: gewoon opnieuw proberen
+        status.textContent = `Gelezen: ${label}… nog eens kijken. Houd de kaart stil.`;
+        return;
+      }
       if (usedLang !== lang) { KK.setLang('en'); renderChips(); KK.toast(`Niet gevonden in het ${KK.langName(lang)}; ik toon de Engelse kaart`); }
       if (!cands.length) {
         const nSets = (await KK.getSets(lang).catch(() => [])).length;
@@ -349,9 +390,17 @@
     shootBtn.addEventListener('click', () => scanOnce(false));
     el.querySelector('#auto').addEventListener('click', (e) => {
       opts.auto = !opts.auto; e.currentTarget.setAttribute('aria-pressed', opts.auto);
-      clearInterval(autoTimer);
-      if (opts.auto) { status.textContent = 'Doorlopend scannen staat aan. Leg kaart na kaart in het kader.'; autoTimer = setInterval(() => scanOnce(true), 1400); }
+      if (opts.auto) { status.textContent = 'Doorlopend scannen staat aan. Leg kaart na kaart in het kader.'; loop(); }
     });
+    async function loop() {
+      if (looping) return; looping = true;
+      while (alive && opts.auto) {
+        if (video.videoWidth && !document.hidden && document.getElementById('sheet').hidden) await scanOnce(true);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      looping = false;
+    }
+    let looping = false;
     el.querySelector('#autoadd').addEventListener('click', (e) => {
       opts.autoAdd = !opts.autoAdd; e.currentTarget.setAttribute('aria-pressed', opts.autoAdd);
       KK.toast(opts.autoAdd ? 'Zekere matches worden meteen toegevoegd' : 'Je bevestigt zelf met +1');
@@ -376,18 +425,18 @@
         const bmp = await createImageBitmap(f);
         // aanname: de kaart vult de foto grotendeels
         const r = { x: 0, y: 0, w: bmp.width, h: bmp.height, vw: bmp.width, vh: bmp.height };
-        let { parsed, nameText } = await recognizeFromSource(bmp, r);
+        let { parsed, getName } = await recognizeFromSource(bmp, r);
         if (!parsed.denom && !parsed.promo) {
-          const whole = cropTo(bmp, 0, 0, bmp.width, bmp.height, Math.min(2000, bmp.width * 2), false);
+          const whole = cropTo(bmp, 0, 0, bmp.width, bmp.height, Math.min(2000, bmp.height), false, false);
           parsed = KK.parseScan(await ocr(whole, 'free'));
         }
-        await handleParsed(parsed, nameText, false);
+        await handleParsed(parsed, getName, false);
       } catch (err) { status.textContent = 'Deze foto kon niet gelezen worden.'; }
       e.target.value = '';
     });
 
     return () => {
-      alive = false; clearInterval(autoTimer);
+      alive = false; opts.auto = false;
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   };
